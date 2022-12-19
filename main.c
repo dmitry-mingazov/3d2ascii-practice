@@ -2,16 +2,16 @@
 #include <math.h>
 #include <stdlib.h>
 
-#define SCREEN_WIDTH 100
-#define SCREEN_HEIGHT 100
+#define SCREEN_WIDTH 80 
+#define SCREEN_HEIGHT 80
 // distance between screen and object
 #define K2 10
 #define RADIUS 2
 // distance between user and screen
 #define K1 SCREEN_WIDTH*K2*3/(8*RADIUS*2)
 
-#define PHI_SPACING 0.05f
-#define THETA_SPACING 0.1f
+#define PHI_SPACING 0.02f
+#define THETA_SPACING 0.02f
 
 typedef struct s_point_3D {
     double x;
@@ -27,7 +27,7 @@ typedef struct s_point_2D {
 void print_screen(char** screen, int w, int h);
 point_2D project_3D_to_2D(point_3D p);
 int project_point(double coord, double z);
-void draw_circle(point_3D center, double radius, char** screen, int w, int h);
+void draw_sphere(point_3D center, double radius, char** screen, int w, int h, double** zbuffer);
 
 int main(void) {
     int z = 5;
@@ -45,12 +45,11 @@ int main(void) {
     circle_center.x = 0;
     circle_center.y = 0;
     circle_center.z = 0;
-    draw_circle(circle_center, RADIUS, screen, SCREEN_WIDTH, SCREEN_HEIGHT);
+    draw_sphere(circle_center, RADIUS, screen, SCREEN_WIDTH, SCREEN_HEIGHT, zbuffer);
     print_screen(screen, SCREEN_WIDTH, SCREEN_HEIGHT);
 }
 
-void draw_circle(point_3D center, double radius, char** screen, int w, int h) {
-
+void draw_sphere(point_3D center, double radius, char** screen, int w, int h, double** zbuffer) {
     // loop to rotate the circle drawn
     for(double theta=0; theta < 2*M_PI; theta += THETA_SPACING) {
         // this loop will draw a 2d circle and apply the rotation dictated by 
@@ -76,7 +75,10 @@ void draw_circle(point_3D center, double radius, char** screen, int w, int h) {
             curr_point.x = costheta*x + sintheta*z;
             curr_point.y = y;
             curr_point.z = (-sintheta)*x + costheta*z;
-            printf("phi: %.2f - (%.2f, %.2f, %.2f)\n", phi, curr_point.x, curr_point.y, curr_point.z);
+
+            // double ooz = 1/z; // "one over z"
+
+            // printf("phi: %.2f - (%.2f, %.2f, %.2f)\n", phi, curr_point.x, curr_point.y, curr_point.z);
 
 
             point_2D pp = project_3D_to_2D(curr_point);
@@ -84,10 +86,29 @@ void draw_circle(point_3D center, double radius, char** screen, int w, int h) {
 
             pp.x += w/2;
             pp.y = h/2 - pp.y;
-            if (pp.x < w && pp.y < h && pp.x >= 0 && pp.y >= 0) {
-                screen[pp.y][pp.x] = '@';
-            } else {
-                printf("Out of bound (%d, %d)\n", pp.x, pp.y);
+
+            point_3D ls; // light source
+            ls.x = 0;
+            ls.y = 1;
+            ls.z = -1;
+
+            char* l_output = ".,-~:;=!*#$@"; // output char according to light
+
+            double luminance = (ls.x * curr_point.x + ls.y * curr_point.y + ls.z * curr_point.z)/RADIUS;
+
+            // if (luminance>max) {max=luminance;}
+            // if (luminance<min) {min=luminance;}
+            // if 0 or below, this point isn't reached by light
+            if (luminance > 0) {
+                if (curr_point.z < zbuffer[pp.y][pp.x]) {
+                    zbuffer[pp.y][pp.x] = curr_point.z;
+                    int luminance_index = (int)(luminance*8);
+                    if (luminance_index <= 11) {
+                        screen[pp.y][pp.x] = l_output[luminance_index];
+                    } else {
+                        printf("Out of bound luminance index [%d]\n", luminance_index);
+                    }
+                }
             }
         }
     }
