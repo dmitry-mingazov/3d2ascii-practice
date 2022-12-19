@@ -8,10 +8,11 @@
 #define K2 10
 #define RADIUS 2
 // distance between user and screen
-#define K1 SCREEN_WIDTH*K2*3/(8*RADIUS*2)
+#define K1 SCREEN_WIDTH*K2*1/(2*RADIUS*2)
 
 #define PHI_SPACING 0.02f
 #define THETA_SPACING 0.02f
+#define ALPHA_SPACING 0.02f
 
 typedef struct s_point_3D {
     double x;
@@ -27,29 +28,63 @@ typedef struct s_point_2D {
 void print_screen(char** screen, int w, int h);
 point_2D project_3D_to_2D(point_3D p);
 int project_point(double coord, double z);
-void draw_sphere(point_3D center, double radius, char** screen, int w, int h, double** zbuffer);
+void draw_sphere(point_3D center, double radius, int w, int h, double** zbuffer, double** light_map, point_3D ls);
+void render_light(char** screen, int w, int h, double** light_map, double lmax, char* light_chars, int lsize);
 
 int main(void) {
     int z = 5;
     char** screen = (char**)malloc(sizeof(char*)*SCREEN_WIDTH);
+    double** light_map = (double**)malloc(sizeof(double*)*SCREEN_WIDTH);
     double** zbuffer = (double**)malloc(sizeof(double*)*SCREEN_WIDTH);
-    for(int i=0; i<SCREEN_WIDTH; i++) {
+    for(int i=0; i<SCREEN_HEIGHT; i++) {
         screen[i] = (char*)malloc(sizeof(char*)*SCREEN_HEIGHT);
         zbuffer[i] = (double*)malloc(sizeof(double*)*SCREEN_HEIGHT);
-        for(int j=0; j<SCREEN_HEIGHT; j++) {
+        light_map[i] = (double*)malloc(sizeof(double*)*SCREEN_HEIGHT);
+        for(int j=0; j<SCREEN_WIDTH; j++) {
             screen[i][j] = ' ';
             zbuffer[i][j] = 0;
+            light_map[i][j] = 0;
         }
     }
+    point_3D origin_ls; // starting light source
+    origin_ls.x = 0;
+    origin_ls.y = 0;
+    origin_ls.z = -1;
+
+    double lmax = RADIUS;
+
     point_3D circle_center;
     circle_center.x = 0;
     circle_center.y = 0;
     circle_center.z = 0;
-    draw_sphere(circle_center, RADIUS, screen, SCREEN_WIDTH, SCREEN_HEIGHT, zbuffer);
-    print_screen(screen, SCREEN_WIDTH, SCREEN_HEIGHT);
+    char* light_chars = ".,-~:;=!*#$@";
+    system("clear");
+    for(;;){
+        for(double alpha=0; alpha < 2*M_PI; alpha += ALPHA_SPACING) {
+            // applying rotation on x-axis
+            double cosalpha = cos(alpha), sinalpha = sin(alpha);
+            point_3D ls; // light source
+            ls.x = origin_ls.x;
+            ls.y = cosalpha*origin_ls.y + (-sinalpha)*origin_ls.z;
+            ls.z = sinalpha*origin_ls.y + cosalpha*origin_ls.z;
+
+            // clear matrices
+            for(int i=0; i<SCREEN_HEIGHT; i++) {
+                for(int j=0; j<SCREEN_WIDTH; j++) {
+                    screen[i][j] = ' ';
+                    zbuffer[i][j] = 0;
+                    light_map[i][j] = 0;
+                }
+            }
+
+            draw_sphere(circle_center, RADIUS, SCREEN_WIDTH, SCREEN_HEIGHT, zbuffer, light_map, ls);
+            render_light(screen, SCREEN_WIDTH, SCREEN_HEIGHT, light_map, lmax, light_chars, 12);
+            print_screen(screen, SCREEN_WIDTH, SCREEN_HEIGHT);
+        }
+    }
 }
 
-void draw_sphere(point_3D center, double radius, char** screen, int w, int h, double** zbuffer) {
+void draw_sphere(point_3D center, double radius, int w, int h, double** zbuffer, double** light_map, point_3D ls) {
     // loop to rotate the circle drawn
     for(double theta=0; theta < 2*M_PI; theta += THETA_SPACING) {
         // this loop will draw a 2d circle and apply the rotation dictated by 
@@ -75,11 +110,7 @@ void draw_sphere(point_3D center, double radius, char** screen, int w, int h, do
             curr_point.x = costheta*x + sintheta*z;
             curr_point.y = y;
             curr_point.z = (-sintheta)*x + costheta*z;
-
-            // double ooz = 1/z; // "one over z"
-
             // printf("phi: %.2f - (%.2f, %.2f, %.2f)\n", phi, curr_point.x, curr_point.y, curr_point.z);
-
 
             point_2D pp = project_3D_to_2D(curr_point);
             // printf("x: %02d - y: %02d  --- phi: %f\n", pp.x, pp.y, phi);
@@ -87,27 +118,39 @@ void draw_sphere(point_3D center, double radius, char** screen, int w, int h, do
             pp.x += w/2;
             pp.y = h/2 - pp.y;
 
-            point_3D ls; // light source
-            ls.x = 0;
-            ls.y = 1;
-            ls.z = -1;
+            double luminance = (ls.x * curr_point.x + ls.y * curr_point.y + ls.z * curr_point.z);
+            if (luminance > radius) {
+                printf("luminance %.2f at (%.2f, %.2f, %.2f) with ls (%.2f, %.2f, %.2f)\n", luminance, curr_point.x, curr_point.y, curr_point.z, ls.x, ls.y, ls.z);
+                getchar();
+            }
 
-            char* l_output = ".,-~:;=!*#$@"; // output char according to light
-
-            double luminance = (ls.x * curr_point.x + ls.y * curr_point.y + ls.z * curr_point.z)/RADIUS;
-
-            // if (luminance>max) {max=luminance;}
-            // if (luminance<min) {min=luminance;}
             // if 0 or below, this point isn't reached by light
             if (luminance > 0) {
                 if (curr_point.z < zbuffer[pp.y][pp.x]) {
                     zbuffer[pp.y][pp.x] = curr_point.z;
-                    int luminance_index = (int)(luminance*8);
-                    if (luminance_index <= 11) {
-                        screen[pp.y][pp.x] = l_output[luminance_index];
-                    } else {
-                        printf("Out of bound luminance index [%d]\n", luminance_index);
-                    }
+                    light_map[pp.y][pp.x] = luminance;
+                }
+            // but we want to show it anyway, so we set luminance to 0.01
+            } else {
+                if (curr_point.z < zbuffer[pp.y][pp.x]) {
+                    zbuffer[pp.y][pp.x] = curr_point.z;
+                    light_map[pp.y][pp.x] = 0.01f;
+                }
+            }
+        }
+    }
+}
+
+void render_light(char** screen, int w, int h, double** light_map, double lmax, char* light_chars, int lsize) {
+    double lunit = lmax/(lsize);
+    for(int y=0; y<h; y++) {
+        for(int x=0; x<w; x++) {
+            if(light_map[y][x] > 0) {
+                int luminance_index = light_map[y][x] / lunit;
+                if (luminance_index >= 0 && luminance_index < lsize) {
+                    screen[y][x] = light_chars[luminance_index];
+                } else {
+                    printf("Index out of bound! L: %d  - luminance: %.2f  - lunit: %.2f  - lmax: %.2f\n", luminance_index, light_map[y][x], lunit, lmax);
                 }
             }
         }
@@ -129,9 +172,9 @@ int project_point(double coord, double z) {
 }
 
 void print_screen(char** screen, int w, int h) {
-    system("clear");
-    for(int y=0; y<w; y++) {
-        for(int x=0; x<h; x++) {
+    printf("\x1b[H");
+    for(int y=0; y<h; y++) {
+        for(int x=0; x<w; x++) {
             printf(" %c", screen[y][x]);
         }
         printf("\n");
