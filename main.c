@@ -25,6 +25,12 @@ typedef struct s_point_2D {
     int y;
 } point_2D;
 
+const char* light_chars = ".,-~:;=!*#$@";
+
+point_3D r_on_xaxis(point_3D p, double theta);
+point_3D r_on_yaxis(point_3D p, double theta);
+
+point_3D init_3D_point(double x, double y, double z); 
 void print_screen(char** screen, int w, int h);
 point_2D project_3D_to_2D(point_3D p);
 int project_point(double coord, double z);
@@ -46,27 +52,16 @@ int main(void) {
             light_map[i][j] = 0;
         }
     }
-    point_3D origin_ls; // starting light source
-    origin_ls.x = 0;
-    origin_ls.y = 0;
-    origin_ls.z = -1;
+    point_3D origin_ls = init_3D_point(0, 0, -1); // starting light source
 
     double lmax = RADIUS;
 
-    point_3D circle_center;
-    circle_center.x = 0;
-    circle_center.y = 0;
-    circle_center.z = 0;
-    char* light_chars = ".,-~:;=!*#$@";
+    point_3D circle_center = init_3D_point(0, 0, 0);
     system("clear");
     for(;;){
         for(double alpha=0; alpha < 2*M_PI; alpha += ALPHA_SPACING) {
             // applying rotation on x-axis
-            double cosalpha = cos(alpha), sinalpha = sin(alpha);
-            point_3D ls; // light source
-            ls.x = origin_ls.x;
-            ls.y = cosalpha*origin_ls.y + (-sinalpha)*origin_ls.z;
-            ls.z = sinalpha*origin_ls.y + cosalpha*origin_ls.z;
+            point_3D ls = r_on_xaxis(origin_ls, alpha); // light source
 
             // clear matrices
             for(int i=0; i<SCREEN_HEIGHT; i++) {
@@ -100,18 +95,10 @@ void draw_sphere(point_3D center, double radius, int w, int h, double** zbuffer,
             double y = center.y + sinphi * radius;
             double z = center.z;
 
-            // rotation matrix on y-axis
-            // [ costheta   0   sintheta ]
-            // [    0       1       0    ]
-            // [ -sintheta  0   costheta ]
-            //
-            // applying rotation around y-axis
-            point_3D curr_point;
-            curr_point.x = costheta*x + sintheta*z;
-            curr_point.y = y;
-            curr_point.z = (-sintheta)*x + costheta*z;
             // printf("phi: %.2f - (%.2f, %.2f, %.2f)\n", phi, curr_point.x, curr_point.y, curr_point.z);
 
+            // rotation on y axis applied
+            point_3D curr_point = r_on_yaxis(init_3D_point(x, y, z), theta);
             point_2D pp = project_3D_to_2D(curr_point);
             // printf("x: %02d - y: %02d  --- phi: %f\n", pp.x, pp.y, phi);
 
@@ -182,3 +169,43 @@ void print_screen(char** screen, int w, int h) {
     printf("\n");
 }
 
+// rotation matrix on x-axis
+// [    1          0           0     ]
+// [    0       costheta   -sintheta ]
+// [    0       sintheta    costheta ]
+//
+// applying rotation around y-axis
+point_3D r_on_xaxis(point_3D p, double theta) {
+    double costheta = cos(theta), sintheta = sin(theta);
+    point_3D res = {
+        .x = p.x,
+        .y = costheta*p.y - sintheta*p.z,
+        .z = sintheta*p.y + costheta*p.z,
+    };
+    return res;
+}
+
+// rotation matrix on y-axis
+// [ costheta   0   sintheta ]
+// [    0       1       0    ]
+// [ -sintheta  0   costheta ]
+//
+// applying rotation around y-axis
+point_3D r_on_yaxis(point_3D p, double theta) {
+    double costheta = cos(theta), sintheta = sin(theta);
+    point_3D res = {
+        .x = costheta*p.x + sintheta*p.z,
+        .y = p.y,
+        .z = -sintheta*p.x + costheta*p.z,
+    };
+    return res;
+}
+
+point_3D init_3D_point(double x, double y, double z) {
+    point_3D p = {
+        .x = x,
+        .y = y,
+        .z = z
+    };
+    return p;
+}
