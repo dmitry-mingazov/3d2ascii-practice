@@ -34,7 +34,7 @@ point_3D init_3D_point(double x, double y, double z);
 void print_screen(char** screen, int w, int h);
 point_2D project_3D_to_2D(point_3D p);
 int project_point(double coord, double z);
-void draw_sphere(point_3D center, double radius, int w, int h, double** zbuffer, double** light_map, point_3D ls);
+void draw_sphere(point_3D offset, double radius, int w, int h, double** zbuffer, double** light_map, point_3D ls);
 void render_light(char** screen, int w, int h, double** light_map, double lmax, char* light_chars, int lsize);
 
 int main(void) {
@@ -56,7 +56,9 @@ int main(void) {
 
     double lmax = RADIUS;
 
-    point_3D circle_center = init_3D_point(0, 0, 0);
+    point_3D first_sphere = init_3D_point(0, 0, 0);
+    point_3D second_sphere = init_3D_point(RADIUS*2, 0, 0);
+
     system("clear");
     for(;;){
         for(double alpha=0; alpha < 2*M_PI; alpha += ALPHA_SPACING) {
@@ -72,14 +74,15 @@ int main(void) {
                 }
             }
 
-            draw_sphere(circle_center, RADIUS, SCREEN_WIDTH, SCREEN_HEIGHT, zbuffer, light_map, ls);
+            draw_sphere(first_sphere, RADIUS, SCREEN_WIDTH, SCREEN_HEIGHT, zbuffer, light_map, ls);
+            draw_sphere(second_sphere, RADIUS/2, SCREEN_WIDTH, SCREEN_HEIGHT, zbuffer, light_map, ls);
             render_light(screen, SCREEN_WIDTH, SCREEN_HEIGHT, light_map, lmax, light_chars, 12);
             print_screen(screen, SCREEN_WIDTH, SCREEN_HEIGHT);
         }
     }
 }
 
-void draw_sphere(point_3D center, double radius, int w, int h, double** zbuffer, double** light_map, point_3D ls) {
+void draw_sphere(point_3D offset, double radius, int w, int h, double** zbuffer, double** light_map, point_3D ls) {
     // loop to rotate the circle drawn
     for(double theta=0; theta < 2*M_PI; theta += THETA_SPACING) {
         // this loop will draw a 2d circle and apply the rotation dictated by 
@@ -91,19 +94,28 @@ void draw_sphere(point_3D center, double radius, int w, int h, double** zbuffer,
             double sinphi = sin(phi);
 
             // circle perpendicular to viewer, no rotations applied
-            double x = center.x + cosphi * radius;
-            double y = center.y + sinphi * radius;
-            double z = center.z;
+            double x = cosphi * radius;
+            double y = sinphi * radius;
+            double z = 0;
 
             // printf("phi: %.2f - (%.2f, %.2f, %.2f)\n", phi, curr_point.x, curr_point.y, curr_point.z);
 
             // rotation on y axis applied
             point_3D curr_point = r_on_yaxis(init_3D_point(x, y, z), theta);
+
+            curr_point.x += offset.x;
+            curr_point.y += offset.y;
+            curr_point.z += offset.z;
+
             point_2D pp = project_3D_to_2D(curr_point);
             // printf("x: %02d - y: %02d  --- phi: %f\n", pp.x, pp.y, phi);
 
             pp.x += w/2;
             pp.y = h/2 - pp.y;
+
+            if(pp.x >= w || pp.x < 0 || pp.y >= h || pp.y < 0) {
+                continue;
+            }
 
             double luminance = (ls.x * curr_point.x + ls.y * curr_point.y + ls.z * curr_point.z);
             if (luminance > radius) {
